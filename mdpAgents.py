@@ -60,18 +60,36 @@ OBJECTS = dict([(value,obj) for obj, value in VALUE.items()])
 class MDPAgent(game.Agent):
 
     def __init__(self):
-        pass
+        self.map = None
 
     def registerInitialState(self, state):
-        pass
+        """
+        build initial map to be used for value iteration 
+        """
+        map = []
+
+        max_x=0
+        max_y=0
+
+        for x,y in api.corners(state):
+            max_x = max(x, max_x)
+            max_y = max(y, max_y)
+
+        for _ in range(max_x+1):
+            map.append([0] * (max_y+1))
+        
+        for x, y in api.walls(state):
+            map[x][y] = VALUE["wall"]
+
+        self.map = map
         
     # This is what gets run in between multiple games
     def final(self, state):
-        pass
+        self.map = None
 
     def getAction(self, state):
         legalMoves = api.legalActions(state)
-        val_it_map = valueIteration(getRewardMap(state), 0.999)
+        val_it_map = self.valueIteration(getRewardMap(state), 0.999)
         max_move = maximisingAction(api.whereAmI(state), legalMoves, val_it_map)
         # printMap(val_it_map, False)
         # print('\n' * 5)
@@ -80,27 +98,23 @@ class MDPAgent(game.Agent):
 
         return api.makeMove(max_move, legalMoves)
 
-def valueIteration(rewards, gamma=0.9):
-    max_x = len(rewards)
-    max_y = len(rewards[0])
-
-    map = []
-
-    # build initial map with empty spaces for every position in grid
-    for _ in range(max_x):
-        map.append([0] * (max_y))
-
-    for _ in range(100):
-        oldMap = list(map)
-        for x in range(len(map)):
-            for y in range(len(map[0])):
-                reward = rewards[x][y]
-                if reward == "W":
-                    map[x][y] = "W"
-                else:
-                    newVal = rewards[x][y] + gamma * weightedExpectedUtility((x,y), getLegalActions((x,y), oldMap), oldMap, 0.9, 0.1)
-                    map[x][y] = newVal
-    return map
+    def valueIteration(self, rewards, gamma=0.9):
+        """
+        returns the utility values for each coordinate of the map
+        """
+        map = self.map # copies the values from the previous time step, which allows the algorithm to converge faster
+        for _ in range(20):
+            oldMap = list(map)
+            for x in range(len(map)):
+                for y in range(len(map[0])):
+                    reward = rewards[x][y]
+                    if reward == "W":
+                        map[x][y] = "W"
+                    else:
+                        newVal = rewards[x][y] + gamma * weightedExpectedUtility((x,y), getLegalActions((x,y), oldMap), oldMap, 0.9, 0.1)
+                        map[x][y] = newVal
+        self.map = map
+        return map
 
 def getLegalActions(position, map):
     """
