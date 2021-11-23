@@ -46,10 +46,11 @@ SMALLGRIDVALUE = {
 VALUE = {
         "empty" : -1,
         "ghost" : -300,
-        "edible_ghost" : 50,
+        "edible_ghost" : 100,
         "food" : 10,
         "pacman" : -5,
         "capsule" : 15,
+        "deathzone" : -20,
         "wall" : "W"
 }
 
@@ -306,7 +307,7 @@ def getRewardMap(state):
         # therefore pacman's internal representation of where the ghosts are might be slightly wrong
         # and this could lead to bugs/inaccuracies
         x,y = util.nearestPoint(pos)
-        value = ((VALUE["edible_ghost"] * edible_ghost[pos])/39) if pos in edible_ghost and edible_ghost[pos] > 0 else VALUE["ghost"]
+        value = ((VALUE["edible_ghost"] * edible_ghost[pos])/40) if pos in edible_ghost and edible_ghost[pos] > 0 else VALUE["ghost"]
 
         map[x][y] = value
 
@@ -314,5 +315,8 @@ def getRewardMap(state):
         for move in legalMoves:
             x_,y_ = coordinateAfterMove((x,y), move, legalMoves)
             map[x_][y_] = value
+    
+    for x in range(8,12,1):
+        map[x][5] = VALUE["deathzone"]
 
     return map
