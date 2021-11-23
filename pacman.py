@@ -271,6 +271,7 @@ class ClassicGameRules:
     def __init__(self, timeout=30):
         self.timeout = timeout
         self.winssofar = 0
+        self.excellencescore = 0
 
     def newGame( self, layout, pacmanAgent, ghostAgents, display, quiet = False, catchExceptions=False):
         agents = [pacmanAgent] + ghostAgents[:layout.getNumGhosts()]
@@ -296,7 +297,9 @@ class ClassicGameRules:
         if not self.quiet: print "#Pacman emerges victorious! Score: %d" % state.data.score
         game.gameOver = True
         self.winssofar +=1
+        self.excellencescore += (state.data.score-1500) if (state.data.score-1500) > 0 else 0
         if not self.quiet: print "#Wins so far: %d" % self.winssofar
+        if not self.quiet: print "Excellence score: %d" % self.excellencescore
         if not self.quiet: print "-----------------------"
 
     def lose( self, state, game ):

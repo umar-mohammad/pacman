@@ -45,7 +45,7 @@ SMALLGRIDVALUE = {
 
 VALUE = {
         "empty" : -1,
-        "ghost" : -150,
+        "ghost" : -300,
         "edible_ghost" : 50,
         "food" : 10,
         "pacman" : -5,
@@ -89,7 +89,8 @@ def valueIteration(rewards, gamma=0.9):
     # build initial map with empty spaces for every position in grid
     for _ in range(max_x):
         map.append([0] * (max_y))
-    for i in range(100):
+
+    for _ in range(100):
         oldMap = list(map)
         for x in range(len(map)):
             for y in range(len(map[0])):
@@ -97,7 +98,7 @@ def valueIteration(rewards, gamma=0.9):
                 if reward == "W":
                     map[x][y] = "W"
                 else:
-                    newVal = rewards[x][y] + gamma * weightedExpectedUtility((x,y), getLegalActions((x,y), oldMap), oldMap, 0.85, 0.15)
+                    newVal = rewards[x][y] + gamma * weightedExpectedUtility((x,y), getLegalActions((x,y), oldMap), oldMap, 0.9, 0.1)
                     map[x][y] = newVal
     return map
 
