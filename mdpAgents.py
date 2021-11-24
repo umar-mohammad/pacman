@@ -208,7 +208,7 @@ def calculateBestActions(position, legalMoves, rewardMap):
     pacman position
     """
     # maximisingMoves is a list containing all move-utility tuples that have the highest utility value
-    # this allows us to choose a random move from it which makes pacman's movement non-deterministic 
+    # this allows us to choose a random move which makes pacman's movement non-deterministic 
     # when multiple moves have equal utility value which helps it not get stuck in corners
     maximisingMoves = [] 
 
