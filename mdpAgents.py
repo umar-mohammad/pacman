@@ -92,10 +92,10 @@ class MDPAgent(game.Agent):
         legalMoves = api.legalActions(state)
         val_it_map = self.valueIteration(getRewardMap(state), 0.999)
         max_move = maximisingAction(api.whereAmI(state), legalMoves, val_it_map)
-        # printMap(val_it_map, False)
+        # printMap(val_it_map)
         # print('\n' * 5)
         # import time
-        # time.sleep(1)
+        # time.sleep(0.35)
 
         return api.makeMove(max_move, legalMoves)
 
@@ -139,6 +139,40 @@ def getLegalActions(position, map):
             elif i == 2: legalActions.append(Directions.SOUTH)
             elif i == 3: legalActions.append(Directions.WEST) 
     return legalActions
+
+def ghostFuture(position, steps, map):
+    """
+    returns the position where the ghost can be in future time steps
+    """
+    wall = "W"
+    x,y = position
+    futurePositions = []
+    for _ in range(steps):
+        if map[x][y+steps] != wall:
+            futurePositions.append(((x, y+steps), steps))
+        else:
+            break
+    
+    for _ in range(steps):
+        if map[x+steps][y] != wall:
+            futurePositions.append(((x+steps, y), steps))
+        else:
+            break
+    
+    for _ in range(steps):
+        if map[x][y-steps] != wall:
+            futurePositions.append(((x, y-steps), steps))
+        else:
+            break
+    
+    for _ in range(steps):
+        if map[x-steps][y] != wall:
+            futurePositions.append(((x-steps, y), steps))
+        else:
+            break
+    
+    return futurePositions
+
 
 def copyMap(map):
     """
@@ -268,7 +302,7 @@ def coordinateAfterMove(position, direction, legalMoves):
     else:
         raise ValueError("direction argument is not a valid Direction")
 
-def printMap(map, humanReadable=True):
+def printMap(map, humanReadable=False):
     """
     print to terminal a representation of pacman's internal map
     """
@@ -279,7 +313,7 @@ def printMap(map, humanReadable=True):
     for y in range(max_y-1, -1, -1):
         row = ""
         for x in range(max_x):
-            row += OBJECTS[map[x][y]] if humanReadable else (" " + str(int(map[x][y])) + " ") if map[x][y] != "W" else " W "
+            row += OBJECTS[map[x][y]] if humanReadable else (" " + str(int(map[x][y])) + " ") if map[x][y] != "W" else "  W  "
         print(row)
 
 def getRewardMap(state):
@@ -331,14 +365,14 @@ def getRewardMap(state):
         x,y = util.nearestPoint(pos)
         value = ((VALUE["edible_ghost"] * edible_ghost[pos])/40) if pos in edible_ghost and edible_ghost[pos] > 0 else VALUE["ghost"]
 
-        map[x][y] = value
+        map[x][y] += value
 
         legalMoves = getLegalActions((x,y), map)
         for move in legalMoves:
             x_,y_ = coordinateAfterMove((x,y), move, legalMoves)
-            map[x_][y_] = value
+            map[x_][y_] += value
     
     for x in range(8,12,1):
-        map[x][5] = VALUE["deathzone"]
+        map[x][5] += VALUE["deathzone"]
 
     return map
