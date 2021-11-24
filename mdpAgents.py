@@ -95,7 +95,7 @@ class MDPAgent(game.Agent):
         # printMap(val_it_map)
         # print('\n' * 5)
         # import time
-        # time.sleep(0.35)
+        # time.sleep(3)
 
         return api.makeMove(max_move, legalMoves)
 
@@ -145,32 +145,32 @@ def ghostFuture(position, steps, map):
     returns the position where the ghost can be in future time steps
     """
     wall = "W"
-    x,y = position
+    x,y = util.nearestPoint(position)
     futurePositions = []
-    for _ in range(steps):
-        if map[x][y+steps] != wall:
-            futurePositions.append(((x, y+steps), steps))
+    for i in range(1, steps+1):
+        if map[x][y+i] != wall:
+            futurePositions.append(((x, y+i), i))
         else:
             break
     
-    for _ in range(steps):
-        if map[x+steps][y] != wall:
-            futurePositions.append(((x+steps, y), steps))
+    for i in range(1, steps+1):
+        if map[x+i][y] != wall:
+            futurePositions.append(((x+i, y), i))
         else:
             break
     
-    for _ in range(steps):
-        if map[x][y-steps] != wall:
-            futurePositions.append(((x, y-steps), steps))
+    for i in range(1, steps+1):
+        if map[x][y-i] != wall:
+            futurePositions.append(((x, y-i), i))
         else:
             break
     
-    for _ in range(steps):
-        if map[x-steps][y] != wall:
-            futurePositions.append(((x-steps, y), steps))
+    for i in range(1, steps+1):
+        if map[x-i][y] != wall:
+            futurePositions.append(((x-i, y), i))
         else:
             break
-    
+
     return futurePositions
 
 
@@ -367,10 +367,9 @@ def getRewardMap(state):
 
         map[x][y] += value
 
-        legalMoves = getLegalActions((x,y), map)
-        for move in legalMoves:
-            x_,y_ = coordinateAfterMove((x,y), move, legalMoves)
-            map[x_][y_] += value
+        for futureposition, steps in ghostFuture(pos, 5, map):
+            x,y = futureposition
+            map[x][y] += value * (1/steps)
     
     for x in range(8,12,1):
         map[x][5] += VALUE["deathzone"]
