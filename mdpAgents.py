@@ -34,10 +34,10 @@ import random
 from game import Directions
 
 SMALLGRIDVALUE = {
-        "empty" : -0.5,
-        "ghost" : -10,
+        "empty" : 0,
+        "ghost" : -3,
         "edible_ghost" : 30,
-        "food" : 10,
+        "food" : 2,
         "pacman" : -5,
         "capsule" : 11,
         "wall" : "W"
@@ -104,8 +104,11 @@ class MDPAgent(game.Agent):
         returns the utility values for each coordinate of the map
         """
         map = self.map # copies the values from the previous time step, which allows the algorithm to converge faster
-        for _ in range(20):
-            oldMap = list(map)
+        # iterations = 0
+        while True:
+            # iterations+=1
+            oldMap = copyMap(map)
+            delta = 0
             for x in range(len(map)):
                 for y in range(len(map[0])):
                     reward = rewards[x][y]
@@ -113,7 +116,11 @@ class MDPAgent(game.Agent):
                         map[x][y] = "W"
                     else:
                         newVal = rewards[x][y] + gamma * weightedExpectedUtility((x,y), getLegalActions((x,y), oldMap), oldMap, 0.9, 0.1)
+                        delta += abs(newVal - oldMap[x][y])
                         map[x][y] = newVal
+            if delta <= 5: 
+                # print(iterations)
+                break
         self.map = map
         return map
 
@@ -132,6 +139,21 @@ def getLegalActions(position, map):
             elif i == 2: legalActions.append(Directions.SOUTH)
             elif i == 3: legalActions.append(Directions.WEST) 
     return legalActions
+
+def copyMap(map):
+    """
+    returns a copy of the map provided
+    """
+    copy = []
+
+    for x in range(len(map)):
+        copy.append([0] * (len(map[0])))
+    
+    for x in range(len(map)):
+        for y in range(len(map[0])):
+            copy[x][y] = map[x][y]
+    
+    return copy
 
 def weightedExpectedUtility(position, legalMoves, rewardMap, positiveWeight=0.85, negativeWeight=0.15):
     """
