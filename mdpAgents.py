@@ -64,23 +64,23 @@ class MDPAgent(game.Agent):
                 "wall" : "W"
         }
 
-        map = []
-        max_x=0
-        max_y=0
+        reward_map = []
+        width=0
+        height=0
 
         for x,y in api.corners(state):
-            max_x = max(x, max_x)
-            max_y = max(y, max_y)
+            width = max(x, width)
+            height = max(y, height)
         
-        if max_x == 19 and max_y == 10:
+        if width == 19 and height == 10:
             # mediumClassic map
             self.map_values = MEDIUM_CLASSIC_REWARDS
         else:
             self.map_values = SMALL_GRID_REWARDS
 
-        for _ in range(max_x+1):
-            map.append([0] * (max_y+1))
-        self.reward_map = map
+        for _ in range(width+1):
+            reward_map.append([0] * (height+1))
+        self.reward_map = reward_map
         self.ghost_previous = api.ghosts(state)
         
         
@@ -92,9 +92,9 @@ class MDPAgent(game.Agent):
 
 
     def getAction(self, state):
-        legalMoves = api.legalActions(state)
-        max_move = get_optimal_action(api.whereAmI(state), legalMoves, self.value_iteration(self.get_reward_map(state), 0.999))
-        return api.makeMove(max_move, legalMoves)
+        legal_moves = api.legalActions(state)
+        max_move = get_optimal_action(api.whereAmI(state), legal_moves, self.value_iteration(self.get_reward_map(state), 0.999))
+        return api.makeMove(max_move, legal_moves)
 
 
     def value_iteration(self, rewards, gamma=0.9):
@@ -102,6 +102,7 @@ class MDPAgent(game.Agent):
         returns the utility values for each coordinate of the map
         """
         map = self.reward_map # copies the reward map from the previous time step, which allows the algorithm to converge faster
+        
         while True:
             old_map = copy_map(map)
             delta = 0
@@ -116,6 +117,7 @@ class MDPAgent(game.Agent):
                         map[x][y] = updated_value
             if delta <= 5: 
                 break
+            
         self.reward_map = map
         return map
     
@@ -193,7 +195,7 @@ def get_ghost_direction(previous, now, map):
 
 def get_legal_actions(position, map):
     """
-    returns all legal moves for a particular position 
+    returns all legal moves for a particular position on the map
     """
     moves=[(0,1), (1, 0), (0, -1), (-1, 0)]
     legal_actions=[Directions.STOP]
@@ -210,7 +212,7 @@ def get_legal_actions(position, map):
 
 def get_ghost_future_position(position, direction, steps, map):
     """
-    returns the positions where the ghost can be in future game states
+    returns the positions where the ghost can be in after a number of steps
     """
     x,y = util.nearestPoint(position)
     future_positions = []
@@ -223,7 +225,7 @@ def get_ghost_future_position(position, direction, steps, map):
     return future_positions
 
 
-def ghost_future_helper(position, direction, stepstaken, steps, map):
+def ghost_future_helper(position, direction, steps_taken, steps, map):
     """
     helper function that helps predict future ghost positions
     """
@@ -231,11 +233,11 @@ def ghost_future_helper(position, direction, stepstaken, steps, map):
     x, y = util.nearestPoint(position)
     future_positions = []
     x_add, y_add  = Actions._directions[direction]
-    for i in range(1, (steps-stepstaken)+1, 1):
+    for i in range(1, (steps-steps_taken)+1, 1):
         if map[x+(i*x_add)][y+(i*y_add)] != wall:
-            future_positions.append(((x+x_add, y+y_add), stepstaken+i))
-            future_positions.extend(ghost_future_helper((x+(i*x_add), y+(i*y_add)), Directions.LEFT[direction], stepstaken+i, steps, map))
-            future_positions.extend(ghost_future_helper((x+(i*x_add), y+(i*y_add)), Directions.RIGHT[direction], stepstaken+i, steps, map))
+            future_positions.append(((x+x_add, y+y_add), steps_taken+i))
+            future_positions.extend(ghost_future_helper((x+(i*x_add), y+(i*y_add)), Directions.LEFT[direction], steps_taken+i, steps, map))
+            future_positions.extend(ghost_future_helper((x+(i*x_add), y+(i*y_add)), Directions.RIGHT[direction], steps_taken+i, steps, map))
         else:
             break
     
@@ -258,7 +260,7 @@ def copy_map(map):
     return copy
 
 
-def weighted_expected_utility(position, legalMoves, rewardMap, positiveWeight=0.85, negativeWeight=0.15):
+def weighted_expected_utility(position, legal_moves, reward_map, positive_weight=0.85, negative_weight=0.15):
     """
     calculates a weighted expected utility for a certain position on the map, taking into account both
     the maximum and minimum reward you can get for a cell, this helps adjust how optimistic pacman is
@@ -266,55 +268,54 @@ def weighted_expected_utility(position, legalMoves, rewardMap, positiveWeight=0.
     best_move_utility = 0
     worst_move_utility = 0
 
-    for move in legalMoves:
-        x,y = get_coordinate_after_move(position, move, legalMoves)
-        utility_move = api.directionProb * rewardMap[x][y]
+    for move in legal_moves:
+        x,y = get_coordinate_after_move(position, move, legal_moves)
+        utility_move = api.directionProb * reward_map[x][y]
 
         # calculate the rewards if the move does not execute like we want to
         error_moves = get_error_moves(move)
         for error_move in error_moves:
-            x,y = get_coordinate_after_move(position, error_move, legalMoves)
-            utility_move += ((1-api.directionProb)/len(error_moves)) * rewardMap[x][y]
+            x,y = get_coordinate_after_move(position, error_move, legal_moves)
+            utility_move += ((1-api.directionProb)/len(error_moves)) * reward_map[x][y]
         
         best_move_utility = max(best_move_utility, utility_move)
         worst_move_utility = min(worst_move_utility, utility_move)
     
-    return positiveWeight * best_move_utility + negativeWeight * worst_move_utility
+    return positive_weight * best_move_utility + negative_weight * worst_move_utility
 
         
-def calculate_best_actions(position, legalMoves, rewardMap):
+def calculate_best_actions(position, legal_moves, utility_map):
     """
-    calculates the best actions based on the rewards for a particular
-    pacman position
+    calculates the best actions based on the utility values of pacman
     """
     # maximisingMoves is a list containing all move-utility tuples that have the highest utility value
     # this allows us to choose a random move which makes pacman's movement non-deterministic 
     # when multiple moves have equal utility value which helps it not get stuck in corners
-    maximisingMoves = [] 
+    maximising_moves = [] 
 
-    for move in legalMoves:
-        x,y = get_coordinate_after_move(position, move, legalMoves)
-        utility_move = api.directionProb * rewardMap[x][y]
+    for move in legal_moves:
+        x,y = get_coordinate_after_move(position, move, legal_moves)
+        utility_move = api.directionProb * utility_map[x][y]
 
         # calculate the rewards if the move does not execute like we want to
         error_moves = get_error_moves(move)
         for error_move in error_moves:
-            x,y = get_coordinate_after_move(position, error_move, legalMoves)
-            utility_move += ((1-api.directionProb)/len(error_moves)) * rewardMap[x][y]
+            x,y = get_coordinate_after_move(position, error_move, legal_moves)
+            utility_move += ((1-api.directionProb)/len(error_moves)) * utility_map[x][y]
         
-        if len(maximisingMoves) == 0 or utility_move > maximisingMoves[0][1]:
-            maximisingMoves = [(move, utility_move)]
-        elif utility_move == maximisingMoves[0][1]:
-            maximisingMoves.append((move, utility_move))
+        if len(maximising_moves) == 0 or utility_move > maximising_moves[0][1]:
+            maximising_moves = [(move, utility_move)]
+        elif utility_move == maximising_moves[0][1]:
+            maximising_moves.append((move, utility_move))
     
-    return maximisingMoves
+    return maximising_moves
 
 
-def get_optimal_action(position, legalMoves, map):
+def get_optimal_action(position, legal_moves, map):
     """
     returns the move with the highest expected utility 
     """
-    return random.choice(calculate_best_actions(position, legalMoves, map))[0]
+    return random.choice(calculate_best_actions(position, legal_moves, map))[0]
 
 
 def get_error_moves(direction):
