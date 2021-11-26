@@ -80,6 +80,7 @@ class MDPAgent(game.Agent):
 
         for _ in range(width+1):
             reward_map.append([0] * (height+1))
+            
         self.reward_map = reward_map
         self.ghost_previous = api.ghosts(state)
         
@@ -106,6 +107,7 @@ class MDPAgent(game.Agent):
         while True:
             old_map = copy_map(map)
             delta = 0
+            
             for x in range(len(map)):
                 for y in range(len(map[0])):
                     reward = rewards[x][y]
@@ -139,9 +141,11 @@ class MDPAgent(game.Agent):
         # build initial map with empty spaces for every position in grid
         width = 0
         height = 0
+        
         for x,y in corners:
             width = max(x, width)
             height = max(y, height)
+            
         for _ in range(width+1):
             map.append([self.map_values["empty"]] * (height+1))
 
@@ -200,6 +204,7 @@ def get_legal_actions(position, map):
     moves=[(0,1), (1, 0), (0, -1), (-1, 0)]
     legal_actions=[Directions.STOP]
     wall = "W"
+    
     for i, move in enumerate(moves):
         x,y = (move[0] + position[0], move[1] + position[1])
         if map[x][y] != wall:
@@ -207,6 +212,7 @@ def get_legal_actions(position, map):
             elif i == 1: legal_actions.append(Directions.EAST)
             elif i == 2: legal_actions.append(Directions.SOUTH)
             elif i == 3: legal_actions.append(Directions.WEST) 
+            
     return legal_actions
 
 
@@ -233,6 +239,7 @@ def ghost_future_helper(position, direction, steps_taken, steps, map):
     x, y = util.nearestPoint(position)
     future_positions = []
     x_add, y_add  = Actions._directions[direction]
+    
     for i in range(1, (steps-steps_taken)+1, 1):
         if map[x+(i*x_add)][y+(i*y_add)] != wall:
             future_positions.append(((x+x_add, y+y_add), steps_taken+i))
