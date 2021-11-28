@@ -37,9 +37,8 @@ class MDPAgent(game.Agent):
 
 
     def __init__(self):
-        self.reward_map = None
-        self.map_values = None
-        self.ghost_previous = None
+        self.utility_map = None
+        self.reward_values = None
 
 
     def registerInitialState(self, state):
@@ -53,6 +52,7 @@ class MDPAgent(game.Agent):
             "pacman" : 0,
             "wall" : "W"
         }
+        
         MEDIUM_CLASSIC_REWARDS = {
                 "empty" : -1,
                 "ghost" : -500,
@@ -63,33 +63,31 @@ class MDPAgent(game.Agent):
                 "deathzone" : -25,
                 "wall" : "W"
         }
-
-        reward_map = []
-        width=0
-        height=0
-
+        
+        map = []
+        width = 0
+        height = 0
+        
         for x,y in api.corners(state):
             width = max(x, width)
             height = max(y, height)
         
         if width == 19 and height == 10:
             # mediumClassic map
-            self.map_values = MEDIUM_CLASSIC_REWARDS
+            self.reward_values = MEDIUM_CLASSIC_REWARDS
         else:
-            self.map_values = SMALL_GRID_REWARDS
-
+            self.reward_values = SMALL_GRID_REWARDS
+        
         for _ in range(width+1):
-            reward_map.append([0] * (height+1))
+            map.append([self.reward_values["empty"]] * (height+1))
             
-        self.reward_map = reward_map
-        self.ghost_previous = api.ghosts(state)
+        self.utility_map = map
         
         
 
     def final(self, state):
-        self.reward_map = None
-        self.map_values = None
-        self.ghost_previous = None
+        self.utility_map = None
+        self.reward_values = None
 
 
     def getAction(self, state):
@@ -98,11 +96,11 @@ class MDPAgent(game.Agent):
         return api.makeMove(max_move, legal_moves)
 
 
-    def value_iteration(self, rewards, gamma=0.9):
+    def value_iteration(self, utility_map, gamma=0.9):
         """
         returns the utility values for each coordinate of the map
         """
-        map = self.reward_map # copies the reward map from the previous time step, which allows the algorithm to converge faster
+        map = self.utility_map # copies the utility map from the previous time step, which allows the algorithm to converge faster
         
         while True:
             old_map = copy_map(map)
@@ -110,17 +108,17 @@ class MDPAgent(game.Agent):
             
             for x in range(len(map)):
                 for y in range(len(map[0])):
-                    reward = rewards[x][y]
-                    if reward == "W":
+                    utility = utility_map[x][y]
+                    if utility == "W":
                         map[x][y] = "W"
                     else:
-                        updated_value = rewards[x][y] + gamma * weighted_expected_utility((x,y), get_legal_actions((x,y), old_map), old_map, 0.9, 0.1)
+                        updated_value = utility_map[x][y] + gamma * weighted_expected_utility((x,y), get_legal_actions((x,y), old_map), old_map, 0.9, 0.1)
                         delta += abs(updated_value - old_map[x][y])
                         map[x][y] = updated_value
             if delta <= 5: 
                 break
             
-        self.reward_map = map
+        self.utility_map = map
         return map
     
     
@@ -128,73 +126,88 @@ class MDPAgent(game.Agent):
         """
         return a 2D list representing the game state with reward values
         """
-        map = []
-
-        pacman_x, pacman_y = api.whereAmI(state)
-        walls = api.walls(state)
-        corners = api.corners(state)
-        ghosts = api.ghosts(state)
-        edible_ghost = dict(api.ghostStatesWithTimes(state))
-        food = api.food(state)
-        capsules = api.capsules(state)
-
         # build initial map with empty spaces for every position in grid
+        reward_map = self.create_empty_map(state)
+        
+        # update rewards
+        self.add_pacman(state, reward_map)
+        self.add_walls(state, reward_map)
+        self.add_capsules(state, reward_map)
+        self.add_food(state, reward_map)
+        self.add_ghosts(state, reward_map)
+        
+        # check which map pacman is playing
+        map_width, map_height = len(reward_map), len(reward_map[0])
+        if map_width == 19 and map_height == 10:
+            # mediumClassic map
+            # make ghost spawn zone a prohibited area
+            for x in range(8,12,1):
+                reward_map[x][5] += self.reward_values["deathzone"]
+        
+        return reward_map
+    
+    
+    def create_empty_map(self, state):
+        map = []
         width = 0
         height = 0
         
-        for x,y in corners:
+        for x,y in api.corners(state):
             width = max(x, width)
             height = max(y, height)
             
         for _ in range(width+1):
-            map.append([self.map_values["empty"]] * (height+1))
-
-        # place all game elements to the map
-        map[pacman_x][pacman_y] = self.map_values["pacman"]
-        for x,y in capsules: map[x][y] += self.map_values["capsule"]
-        for x,y in food: map[x][y] = self.map_values["food"]
-        for x, y in walls: map[x][y] = self.map_values["wall"]
+            map.append([self.reward_values["empty"]] * (height+1))
         
-        for i, pos in enumerate(ghosts):
-            x,y = util.nearestPoint(pos)
-            value = ((self.map_values["edible_ghost"] * edible_ghost[pos])/40) if pos in edible_ghost and edible_ghost[pos] > 0 else self.map_values["ghost"]
-            map[x][y] += value
-
-            for future_position, steps in get_ghost_future_position(pos, get_ghost_direction(self.ghost_previous[i], pos, map), 4, map):
-                x,y = future_position
-                map[x][y] += value * (1/steps)
-            
-        if width == 19 and height == 10:
-            # mediumClassic map
-                for x in range(8,12,1):
-                    map[x][5] += self.map_values["deathzone"]
-        
-        self.ghost_previous = ghosts
         return map
     
     
-def get_ghost_direction(previous, now, map):
-    """
-    returns the direction the ghost is headed in based on its previous and current positions
-    returns None if we cannot predict the direction the ghost is headed in
-    """
-    direction_vector = (now[0] - previous[0], now[1] - previous[1])
-    if abs(direction_vector[0]) > 1 or abs(direction_vector[1]) > 1:
-        # ghost got eaten and spawned again 
-        # we cannot predict wehre it will go next
-        return None
+    def add_pacman(self, state, map):
+        """
+        return map with added pacman rewards
+        """
+        pacman_x, pacman_y = api.whereAmI(state)
+        map[pacman_x][pacman_y] = self.reward_values["pacman"]
     
-    if len(get_legal_actions(util.nearestPoint(now), map)) >= 4:
-        # ghost is at a junction and it will pick a random direction 
-        # hence we cannot predict where it will go
-        return None
     
-    if direction_vector[0] == 0:
-        if direction_vector[1] > 0: return Directions.NORTH
-        else: return Directions.SOUTH
-    else:
-        if direction_vector[0] > 0: return Directions.EAST
-        else: return Directions.WEST
+    def add_walls(self, state, map):
+        """
+        return map with added wall rewards
+        """
+        walls = api.walls(state)
+        for x, y in walls: map[x][y] = self.reward_values["wall"]
+    
+    
+    def add_capsules(self, state, map):
+        """
+        return map with added capsule rewards
+        """
+        capsules = api.capsules(state)
+        for x,y in capsules: map[x][y] += self.reward_values["capsule"]
+    
+    
+    def add_food(self, state, map):
+        """
+        return map with added food rewards
+        """
+        food = api.food(state)
+        for x,y in food: map[x][y] = self.reward_values["food"]
+    
+    
+    def add_ghosts(self, state, map):
+        """
+        return map with added ghost rewards
+        """
+        ghosts = api.ghosts(state)
+        edible_time = dict(api.ghostStatesWithTimes(state))
+        for pos in ghosts:
+            x,y = util.nearestPoint(pos)
+            value = ((self.reward_values["edible_ghost"] * edible_time[pos])/40) if pos in edible_time and edible_time[pos] > 0 else self.reward_values["ghost"]
+            map[x][y] += value
+
+            for position, steps in get_surrounding_positions(pos, 5, map):
+                x,y = position
+                map[x][y] += value * (1/steps)
 
 
 def get_legal_actions(position, map):
@@ -216,39 +229,39 @@ def get_legal_actions(position, map):
     return legal_actions
 
 
-def get_ghost_future_position(position, direction, steps, map):
+def get_surrounding_positions(position, steps, map):  
     """
-    returns the positions where the ghost can be in after a number of steps
+    returns the legal positions that are within x steps of the ghost
     """
     x,y = util.nearestPoint(position)
-    future_positions = []
-    back = None if direction == None else Directions.REVERSE[direction]
-    future_positions.extend(ghost_future_helper((x,y), Directions.NORTH, 0, int(steps/2) if back == Directions.NORTH else steps, map))
-    future_positions.extend(ghost_future_helper((x,y), Directions.EAST, 0, int(steps/2) if back == Directions.EAST else steps, map))
-    future_positions.extend(ghost_future_helper((x,y), Directions.SOUTH, 0, int(steps/2) if back == Directions.SOUTH else steps, map))
-    future_positions.extend(ghost_future_helper((x,y), Directions.WEST, 0, int(steps/2) if back == Directions.WEST else steps, map))
+    surrounding_positions = []
+    surrounding_positions.extend(surrounding_positions_helper((x,y), Directions.NORTH, 0, steps, map))
+    surrounding_positions.extend(surrounding_positions_helper((x,y), Directions.EAST, 0, steps, map))
+    surrounding_positions.extend(surrounding_positions_helper((x,y), Directions.SOUTH, 0, steps, map))
+    surrounding_positions.extend(surrounding_positions_helper((x,y), Directions.WEST, 0, steps, map))
 
-    return future_positions
+    return surrounding_positions
 
 
-def ghost_future_helper(position, direction, steps_taken, steps, map):
+def surrounding_positions_helper(position, direction, steps_taken, steps, map):
     """
-    helper function that helps predict future ghost positions
+    get_surrounding_positions() helper function, explores all coordinates in one main direction to check if they are legal positions 
+    and recrusively try to explore perpendicular directions to the main
     """
     wall = "W"
     x, y = util.nearestPoint(position)
-    future_positions = []
+    surrounding_positions = []
     x_add, y_add  = Actions._directions[direction]
     
     for i in range(1, (steps-steps_taken)+1, 1):
         if map[x+(i*x_add)][y+(i*y_add)] != wall:
-            future_positions.append(((x+x_add, y+y_add), steps_taken+i))
-            future_positions.extend(ghost_future_helper((x+(i*x_add), y+(i*y_add)), Directions.LEFT[direction], steps_taken+i, steps, map))
-            future_positions.extend(ghost_future_helper((x+(i*x_add), y+(i*y_add)), Directions.RIGHT[direction], steps_taken+i, steps, map))
+            surrounding_positions.append(((x+x_add, y+y_add), steps_taken+i))
+            surrounding_positions.extend(surrounding_positions_helper((x+(i*x_add), y+(i*y_add)), Directions.LEFT[direction], steps_taken+i, steps, map))
+            surrounding_positions.extend(surrounding_positions_helper((x+(i*x_add), y+(i*y_add)), Directions.RIGHT[direction], steps_taken+i, steps, map))
         else:
             break
     
-    return future_positions
+    return surrounding_positions
 
 
 def copy_map(map):
@@ -320,7 +333,7 @@ def calculate_best_actions(position, legal_moves, utility_map):
 
 def get_optimal_action(position, legal_moves, map):
     """
-    returns the move with the highest expected utility 
+    returns move with the highest expected utility 
     """
     return random.choice(calculate_best_actions(position, legal_moves, map))[0]
 
@@ -334,7 +347,7 @@ def get_error_moves(direction):
      
 def get_coordinate_after_move(position, direction, legal_moves):
     """
-    returns pacman's coordinate after move
+    returns pacman's coordinate after moving in a certain direction
     """
     x,y = position
 
