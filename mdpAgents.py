@@ -92,16 +92,17 @@ class MDPAgent(game.Agent):
 
     def getAction(self, state):
         legal_moves = api.legalActions(state)
-        max_move = get_optimal_action(api.whereAmI(state), legal_moves, self.value_iteration(self.get_reward_map(state), 0.999))
+        max_move = get_optimal_action(api.whereAmI(state), legal_moves, self.value_iteration(self.get_reward_map(state), gamma=0.999, epsilon=1))
         return api.makeMove(max_move, legal_moves)
 
 
-    def value_iteration(self, utility_map, gamma=0.9):
+    def value_iteration(self, utility_map, gamma=0.9, epsilon=5):
         """
         returns the utility values for each coordinate of the map
         """
         map = self.utility_map # copies the utility map from the previous time step, which allows the algorithm to converge faster
         
+        # do value iteration until cumulative change in value is less than epsilon
         while True:
             old_map = copy_map(map)
             delta = 0
@@ -115,7 +116,7 @@ class MDPAgent(game.Agent):
                         updated_value = utility_map[x][y] + gamma * weighted_expected_utility((x,y), get_legal_actions((x,y), old_map), old_map, 0.9, 0.1)
                         delta += abs(updated_value - old_map[x][y])
                         map[x][y] = updated_value
-            if delta <= 5: 
+            if delta <= epsilon: 
                 break
             
         self.utility_map = map
@@ -138,7 +139,8 @@ class MDPAgent(game.Agent):
         
         # check which map pacman is playing
         map_width, map_height = len(reward_map), len(reward_map[0])
-        if map_width == 19 and map_height == 10:
+        if map_width == 20 and map_height == 11:
+            
             # mediumClassic map
             # make ghost spawn zone a prohibited area
             for x in range(8,12,1):
@@ -198,16 +200,17 @@ class MDPAgent(game.Agent):
         """
         return map with added ghost rewards
         """
+        MAX_GHOST_EDIBLE_TIME = 40 
         ghosts = api.ghosts(state)
         edible_time = dict(api.ghostStatesWithTimes(state))
         for pos in ghosts:
             x,y = util.nearestPoint(pos)
-            value = ((self.reward_values["edible_ghost"] * edible_time[pos])/40) if pos in edible_time and edible_time[pos] > 0 else self.reward_values["ghost"]
+            value = ((self.reward_values["edible_ghost"] * edible_time[pos])/MAX_GHOST_EDIBLE_TIME) if pos in edible_time and edible_time[pos] > 0 else self.reward_values["ghost"]
             map[x][y] += value
 
-            for position, steps in get_surrounding_positions(pos, 5, map):
+            for position, steps in get_surrounding_positions(pos, 2, map):
                 x,y = position
-                map[x][y] += value * (1/steps)
+                map[x][y] += (value / steps)
 
 
 def get_legal_actions(position, map):
@@ -369,5 +372,5 @@ def print_map(map):
     for y in range(max_y-1, -1, -1):
         row = ""
         for x in range(max_x):
-            row += (" " + str(int(map[x][y])) + " ") if map[x][y] != "W" else "  W  "
+            row += (" " + str(int(map[x][y])) + " ") if map[x][y] != "W" else " W "
         print(row)
