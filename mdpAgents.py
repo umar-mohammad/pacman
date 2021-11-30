@@ -55,12 +55,12 @@ class MDPAgent(game.Agent):
         
         MEDIUM_CLASSIC_REWARDS = {
                 "empty" : -1,
-                "ghost" : -500,
+                "ghost" : -300,
                 "edible_ghost" : 100,
                 "food" : 10,
-                "pacman" : -5,
+                "pacman" : -20,
                 "capsule" : 10.5,
-                "deathzone" : -25,
+                "deathzone" : -300,
                 "wall" : "W"
         }
         
@@ -92,7 +92,9 @@ class MDPAgent(game.Agent):
 
     def getAction(self, state):
         legal_moves = api.legalActions(state)
-        max_move = get_optimal_action(api.whereAmI(state), legal_moves, self.value_iteration(self.get_reward_map(state), gamma=0.999, epsilon=1))
+        value_function = self.value_iteration(self.get_reward_map(state), gamma=0.9, epsilon=1)
+        # print_map(value_function)
+        max_move = get_optimal_action(api.whereAmI(state), legal_moves, value_function)
         return api.makeMove(max_move, legal_moves)
 
 
@@ -113,7 +115,7 @@ class MDPAgent(game.Agent):
                     if utility == "W":
                         map[x][y] = "W"
                     else:
-                        updated_value = utility_map[x][y] + gamma * weighted_expected_utility((x,y), get_legal_actions((x,y), old_map), old_map, 0.9, 0.1)
+                        updated_value = utility_map[x][y] + gamma * maximum_expected_utility((x,y), get_legal_actions((x,y), old_map), old_map)
                         delta += abs(updated_value - old_map[x][y])
                         map[x][y] = updated_value
             if delta <= epsilon: 
@@ -131,25 +133,20 @@ class MDPAgent(game.Agent):
         reward_map = self.create_empty_map(state)
         
         # update rewards
-        self.add_pacman(state, reward_map)
-        self.add_walls(state, reward_map)
-        self.add_capsules(state, reward_map)
-        self.add_food(state, reward_map)
-        self.add_ghosts(state, reward_map)
-        
-        # check which map pacman is playing
-        map_width, map_height = len(reward_map), len(reward_map[0])
-        if map_width == 20 and map_height == 11:
-            
-            # mediumClassic map
-            # make ghost spawn zone a prohibited area
-            for x in range(8,12,1):
-                reward_map[x][5] += self.reward_values["deathzone"]
+        self.add_wall_reward(state, reward_map)
+        self.add_capsule_reward(state, reward_map)
+        self.add_food_reward(state, reward_map)
+        self.add_pacman_reward(state, reward_map)
+        self.add_ghosts_reward(state, reward_map)
+        self.add_spawn_area_reward(state, reward_map)
         
         return reward_map
-    
-    
+
+
     def create_empty_map(self, state):
+        """
+        returns an empty reward map with the same dimensions as the game map
+        """
         map = []
         width = 0
         height = 0
@@ -164,54 +161,70 @@ class MDPAgent(game.Agent):
         return map
     
     
-    def add_pacman(self, state, map):
+    def add_pacman_reward(self, state, map):
         """
-        return map with added pacman rewards
+        add pacman rewards to map
         """
         pacman_x, pacman_y = api.whereAmI(state)
-        map[pacman_x][pacman_y] = self.reward_values["pacman"]
+        map[pacman_x][pacman_y] += self.reward_values["pacman"]
     
     
-    def add_walls(self, state, map):
+    def add_wall_reward(self, state, map):
         """
-        return map with added wall rewards
+        add wall rewards to map
         """
         walls = api.walls(state)
         for x, y in walls: map[x][y] = self.reward_values["wall"]
     
     
-    def add_capsules(self, state, map):
+    def add_capsule_reward(self, state, map):
         """
-        return map with added capsule rewards
+        add capsule rewards to map
         """
         capsules = api.capsules(state)
         for x,y in capsules: map[x][y] += self.reward_values["capsule"]
     
     
-    def add_food(self, state, map):
+    def add_food_reward(self, state, map):
         """
-        return map with added food rewards
+        add food rewards to map
         """
         food = api.food(state)
-        for x,y in food: map[x][y] = self.reward_values["food"]
+        for x,y in food: map[x][y] += self.reward_values["food"]
     
     
-    def add_ghosts(self, state, map):
+    def add_ghosts_reward(self, state, map):
         """
-        return map with added ghost rewards
+        add ghost rewards to map
         """
         MAX_GHOST_EDIBLE_TIME = 40 
         ghosts = api.ghosts(state)
         edible_time = dict(api.ghostStatesWithTimes(state))
         for pos in ghosts:
             x,y = util.nearestPoint(pos)
-            value = ((self.reward_values["edible_ghost"] * edible_time[pos])/MAX_GHOST_EDIBLE_TIME) if pos in edible_time and edible_time[pos] > 0 else self.reward_values["ghost"]
+            value = -10 + ((self.reward_values["edible_ghost"] * edible_time[pos])/MAX_GHOST_EDIBLE_TIME) if pos in edible_time and edible_time[pos] > 0 else self.reward_values["ghost"]
             map[x][y] += value
 
-            for position, steps in get_surrounding_positions(pos, 2, map):
+            for position, steps in get_surrounding_positions(pos, 3, map):
                 x,y = position
                 map[x][y] += (value / steps)
-
+            
+            for position, steps in get_line_of_sight_positions(pos, 5, map):
+                x,y = position
+                map[x][y] += (value / steps)
+    
+    
+    def add_spawn_area_reward(self, _state, map):
+        """
+        add spawn area rewards to map
+        """
+        # check which map pacman is playing
+        map_width, map_height = len(map), len(map[0])
+        if map_width == 20 and map_height == 11:
+            # mediumClassic map
+            # make ghost spawn zone an undersirable area
+            for x in range(8,12,1):
+                map[x][5] += self.reward_values["deathzone"]
 
 def get_legal_actions(position, map):
     """
@@ -267,6 +280,37 @@ def surrounding_positions_helper(position, direction, steps_taken, steps, map):
     return surrounding_positions
 
 
+def get_line_of_sight_positions(position, steps, map):
+    """
+    returns the legal positions that are on the same latitude and longitude 
+    """
+    x,y = util.nearestPoint(position)
+    los_positions = []
+    los_positions.extend(line_of_sight_helper((x,y), Directions.NORTH, steps, map))
+    los_positions.extend(line_of_sight_helper((x,y), Directions.EAST, steps, map))
+    los_positions.extend(line_of_sight_helper((x,y), Directions.SOUTH, steps, map))
+    los_positions.extend(line_of_sight_helper((x,y), Directions.WEST, steps, map))
+    
+    return los_positions
+    
+    
+def line_of_sight_helper(position, direction, step, map):
+    """
+    explores on direction until it meets a wall or reaches the step limit and returns all the legal positions
+    """
+    wall = "W"
+    x, y = util.nearestPoint(position)
+    los_positions = []
+    x_add, y_add  = Actions._directions[direction]
+    current_step = 1
+    
+    while(current_step <= step and map[x+(current_step*x_add)][y+(current_step*y_add)] != wall):
+        los_positions.append(((x+(current_step*x_add), y+(current_step*y_add)), current_step))
+        current_step+=1
+        
+    return los_positions
+
+
 def copy_map(map):
     """
     returns a copy of the map provided
@@ -305,6 +349,26 @@ def weighted_expected_utility(position, legal_moves, reward_map, positive_weight
         worst_move_utility = min(worst_move_utility, utility_move)
     
     return positive_weight * best_move_utility + negative_weight * worst_move_utility
+
+def maximum_expected_utility(position, legal_moves, reward_map):
+    """
+    calculates the maximum expected utility for a certain position on the map
+    """
+    best_move_utility = 0
+
+    for move in legal_moves:
+        x,y = get_coordinate_after_move(position, move, legal_moves)
+        utility_move = api.directionProb * reward_map[x][y]
+
+        # calculate the rewards if the move does not execute like we want to
+        error_moves = get_error_moves(move)
+        for error_move in error_moves:
+            x,y = get_coordinate_after_move(position, error_move, legal_moves)
+            utility_move += ((1-api.directionProb)/len(error_moves)) * reward_map[x][y]
+        
+        best_move_utility = max(best_move_utility, utility_move)
+    
+    return best_move_utility
 
         
 def calculate_best_actions(position, legal_moves, utility_map):
